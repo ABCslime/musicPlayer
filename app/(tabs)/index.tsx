@@ -1,70 +1,183 @@
-import { Image, StyleSheet, Platform } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import Swiper from 'react-native-deck-swiper';
+import AudioPlayer from '../Audio';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+class Card {
+  artist: string;
+  song: string;
+  id: number;
+  constructor(artist: string, song: string, url: string, id: number) {
+    this.artist = artist;
+    this.song = song;
+    this.id = id;
+  }
+}
 
-export default function HomeScreen() {
+export default function App() {
+  const [cards, setCards] = useState<Card[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+
+  const API_BASE_URL = 'http://95.176.226.180:3000';
+ 
+
+  const fetchArtistData = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/getMetadata`);
+      const data = await response.json();
+      console.log(cards)
+      setCards([...cards, { artist: data.artist, song: data.title, id: data.id }]);
+      console.log(cards)
+    } catch (error) {
+      console.error('Error fetching artist data:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchArtistData();
+  }, []);
+
+  const audioPlayerRef = useRef<{
+    playAudio: (title: string, artist: string, id: number) => Promise<void>;
+    pauseAudio: () => Promise<void>;
+    getCurrentPosition: () => Promise<number>;
+    seekTo: (position: number) => Promise<void>;
+    getDuration: () => Promise<number>;
+  } | null>(null);
+
+
+  const play = async () => {
+    if (audioPlayerRef.current) {
+      const currentCard = cards[currentIndex];
+      await audioPlayerRef.current.playAudio(currentCard.song, currentCard.artist, currentCard.id);
+
+      
+
+     
+    }
+  };
+
+  const pause = async () => {
+    if (audioPlayerRef.current) {
+      await audioPlayerRef.current.pauseAudio();
+      
+    }
+  };
+
+  const swiperRef = useRef<Swiper<any> | null>(null);
+
+  const likeSong = async (songId: number) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/likeSong`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ song_id: songId }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log(result.message); // Song marked as liked
+      } else {
+        console.error('Error liking the song:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+    }
+  };
+
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({ ios: 'cmd + d', android: 'cmd + m' })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          Tap the Explore tab to learn more about what's included in this starter app.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          When you're ready, run{' '}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <View style={styles.container}>
+      <Swiper
+        ref={swiperRef}
+        cards={cards}
+        infinite={true}
+        renderCard={(cardData) => {
+          if (!cardData) return null;
+          const { artist, song, id } = cardData;
+          return (
+            <View style={styles.card}>
+              <Text style={styles.text}>{`${artist} - ${song}`}</Text>
+              <AudioPlayer
+                ref={audioPlayerRef}
+                id={id}
+                title={song}
+                artist={artist}
+                swiperRef={swiperRef}
+              />
+              <View style={styles.buttonContainer}>
+                <TouchableOpacity onPress={play} style={styles.button}>
+                  <Text style={{ color: '#FFFFFF' }}>Play</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => likeSong(id)} style={styles.button}>
+                  <Text style={{ color: '#FFFFFF' }}>Like</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity onPress={pause} style={styles.button}>
+                  <Text style={{ color: '#FFFFFF' }}>Pause</Text>
+                </TouchableOpacity>
+
+                
+              </View>
+            </View>
+          );
+        }}
+        onSwiped={(cardIndex) => {
+          setCurrentIndex(cardIndex + 1);
+          fetchArtistData().then(()=> {
+            if (audioPlayerRef.current) {
+              audioPlayerRef.current.playAudio(cards[cardIndex+1].artist, cards[cardIndex+1].song, cards[cardIndex+1].id);
+            }}
+          );
+
+          console.log(cards.length,cardIndex)
+          
+        }}
+        onSwipedAll={() => {
+          setCurrentIndex(0);
+          fetchArtistData();
+        }}
+        cardIndex={currentIndex}
+        backgroundColor={'#4FD0E9'}
+        stackSize={1}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  card: {
+    flex: 1,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#E8E8E8',
+    justifyContent: 'center',
+    backgroundColor: 'white',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  text: {
+    textAlign: 'center',
+    fontSize: 50,
+    backgroundColor: 'transparent',
   },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    margin: 10,
+  },
+  button: {
+    borderRadius: 20,
+    padding: 10,
+    backgroundColor: '#007BFF',
+    color: '#FFFFFF',
+  }
 });
